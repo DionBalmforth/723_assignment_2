@@ -6,11 +6,13 @@ module CruiseControl:
 
 %Declare Input Variables
 input On, Off, Resume, Set, QuickDecel, QuickAccel;
-input Accel, Brake, Speed       : float;
+input Accel : float;
+input Brake : float;
+input Speed : float;
 
 %Declare Output Variables
 output CruiseSpeed, ThrottleCmd : float;
-output CruiseState              : integer;
+output CruiseState              : integer; %OFF ON STBY DISABLE
 
 %Declare Signals
 %signal OnSig, OffSig, DisableSig, StdbySig in
@@ -20,10 +22,11 @@ signal State: integer in
 		present State then
 			emit CruiseState(?State);
 		end present;
+		
 		pause;
 	end loop]
 	||
-	run StateControl[signal On/OnSC, Off/OffSC, Resume/ResumeSC, Accel/AccelSC, Brake/BrakeSC, Speed/SpeedSC, State/CruiseState]
+	run StateControl[signal On/OnSC, Off/OffSC, Resume/ResumeSC, Accel/AccelSC, Brake/BrakeSC, Speed/SpeedSC, State/CruiseStateSC]
 
 end signal
 end module
@@ -35,14 +38,44 @@ constant SpeedMax = 150.f	: float;
 constant PedalsMin = 3.f	: float;
 
 input OnSC, OffSC, ResumeSC;
-input AccelSC, BrakeSC, SpeedSC : float;
+input AccelSC : float;
+input BrakeSC : float;
+input SpeedSC : float;
 
-output CruiseState		: integer;
+output CruiseStateSC		: integer;
 
-var State := 1 : integer in
+var State := 0 : integer in
 [loop
-	emit CruiseState(State);
+	emit CruiseStateSC(State);
 	pause;
+	trap SC in
+		%OFF LOGIC
+		if State = 0 then
+			present OnSC then
+				State := 1;
+				exit SC;
+			end present;
+		end if;
+
+		%ON LOGIC
+		if State = 1 then
+			present OffSC then
+				State := 0;
+				exit SC;
+			end present;
+
+			if ?AccelSC > PedalsMin or ?SpeedSC > SpeedMax or ?SpeedSC < SpeedMin then
+				State := 3;
+				exit SC;
+			elsif ?BrakeSC > PedalsMin then
+				State := 2;
+				exit SC;
+			end if;
+		end if;
+		%DISABLE LOGIC
+
+		%STBY LOGIC
+	end trap
 end loop]
 end var
 end module
