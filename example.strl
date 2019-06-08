@@ -1,21 +1,48 @@
-module Example:
-input A, B, I;
-output C;
-suspend
-  trap Ab in
-    loop
-      signal S in
-         await A;
-         emit S;
-      ||
-        await S;
-        present B then
-           exit Ab
-        else
-           emit C
-        end present
-      end signal
-    end loop
-  end trap
-when immediate I
+%Written by Dion Balmforth and Logan McMaster
+
+
+%Start State Change Module
+module CruiseControl:
+
+%Declare Input Variables
+input On, Off, Resume, Set, QuickDecel, QuickAccel;
+input Accel, Brake, Speed       : float;
+
+%Declare Output Variables
+output CruiseSpeed, ThrottleCmd : float;
+output CruiseState              : integer;
+
+%Declare Signals
+%signal OnSig, OffSig, DisableSig, StdbySig in
+
+signal State: integer in
+	[loop
+		present State then
+			emit CruiseState(?State);
+		end present;
+		pause;
+	end loop]
+	||
+	run StateControl[signal On/OnSC, Off/OffSC, Resume/ResumeSC, Accel/AccelSC, Brake/BrakeSC, Speed/SpeedSC, State/CruiseState]
+
+end signal
+end module
+
+module StateControl:
+
+constant SpeedMin = 30.f	: float;
+constant SpeedMax = 150.f	: float;
+constant PedalsMin = 3.f	: float;
+
+input OnSC, OffSC, ResumeSC;
+input AccelSC, BrakeSC, SpeedSC : float;
+
+output CruiseState		: integer;
+
+var State := 1 : integer in
+[loop
+	emit CruiseState(State);
+	pause;
+end loop]
+end var
 end module
