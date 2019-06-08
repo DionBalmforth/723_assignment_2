@@ -49,6 +49,11 @@ var State := 0 : integer in
 	emit CruiseStateSC(State);
 	pause;
 	trap SC in
+		present OffSC then
+			State := 0;
+			exit SC;
+		end present;
+
 		%OFF LOGIC
 		if State = 0 then
 			present OnSC then
@@ -59,11 +64,6 @@ var State := 0 : integer in
 
 		%ON LOGIC
 		if State = 1 then
-			present OffSC then
-				State := 0;
-				exit SC;
-			end present;
-
 			if ?AccelSC > PedalsMin or ?SpeedSC > SpeedMax or ?SpeedSC < SpeedMin then
 				State := 3;
 				exit SC;
@@ -72,9 +72,35 @@ var State := 0 : integer in
 				exit SC;
 			end if;
 		end if;
+
 		%DISABLE LOGIC
+		if State = 2 then 
+			if ?BrakeSC > PedalsMin then
+				exit SC;
+			end if;
+
+			present ResumeSC then 
+				if ?AccelSC > PedalsMin or ?SpeedSC > SpeedMax or ?SpeedSC < SpeedMin then 
+					State := 3;
+					exit SC;
+				elsif (?SpeedSC > SpeedMin and ?SpeedSC < SpeedMax) then
+					State := 1;
+					exit SC;
+				end if;
+			end present;
+		end if;
 
 		%STBY LOGIC
+		if State = 3 then
+			if ?AccelSC < PedalsMin and (SpeedMin < ?SpeedSC and ?SpeedSC < SpeedMax) then
+				State := 1;
+				exit SC;
+			elsif ?BrakeSC > PedalsMin then
+				State := 2;
+				exit SC;
+			end if;
+		end if;
+
 	end trap
 end loop]
 end var
