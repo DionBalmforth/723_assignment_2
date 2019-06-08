@@ -1,0 +1,21 @@
+module Example:
+input A, B, I;
+output C;
+suspend
+  trap Ab in
+    loop
+      signal S in
+         await A;
+         emit S;
+      ||
+        await S;
+        present B then
+           exit Ab
+        else
+           emit C
+        end present
+      end signal
+    end loop
+  end trap
+when immediate I
+end module
