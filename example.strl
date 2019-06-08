@@ -27,10 +27,15 @@ signal State: integer in
 	end loop]
 	||
 	run StateControl[signal On/OnSC, Off/OffSC, Resume/ResumeSC, Accel/AccelSC, Brake/BrakeSC, Speed/SpeedSC, State/CruiseStateSC]
+	%||
+	%run SpeedManagement
+	%||
+	%ThrottleControl
 
 end signal
 end module
 
+%Create Module That Controls FSM
 module StateControl:
 
 constant SpeedMin = 30.f	: float;
