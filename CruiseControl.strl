@@ -130,7 +130,6 @@ var Speed := 0.f : float in
 		pause;
 		trap CSC in
 			if ?StateCSC = 1 then
-				%Speed := 0.f;
 				exit CSC;
 			elsif ?StateCSC = 2 and pre(?StateCSC) = 1 then
 				Speed := ?SpeedCSC;
