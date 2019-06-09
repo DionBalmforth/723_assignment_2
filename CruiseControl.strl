@@ -1,0 +1,214 @@
+%Written by Dion Balmforth and Logan McMaster
+
+
+%Start State Change Module
+module CruiseControl:
+
+%Declare Input Variables
+input On, Off, Resume, Set, QuickDecel, QuickAccel;
+input Accel 			: float;
+input Brake 			: float;
+input Speed 			: float;
+
+%Declare Output Variables
+output CruiseSpeed		: float;
+output ThrottleCmd 		: float;
+output CruiseState              : integer; %OFF ON STBY DISABLE
+
+%Declare Signals
+%signal OnSig, OffSig, DisableSig, StdbySig in
+
+signal State: integer in
+	[loop
+		present State then
+			emit CruiseState(?State);
+		end present;
+		
+		pause;
+	end loop]
+	||
+	run StateControl[signal On/OnSC, Off/OffSC, Resume/ResumeSC, Accel/AccelSC, Brake/BrakeSC, Speed/SpeedSC, State/StateSC]
+	||
+	run CruiseSpeedControl[signal QuickDecel/QuickDecelCSC, QuickAccel/QuickAccelCSC, Set/SetCSC, Speed/SpeedCSC, State/StateCSC, CruiseSpeed/CruiseSpeedCSC] 
+	||
+	run DrivingControl[signal Accel/AccelDC, CruiseSpeed/CruiseSpeedDC, Speed/SpeedDC, State/StateDC, ThrottleCmd/ThrottleCmdDC]
+
+end signal
+end module
+
+%Module That Controls FSM
+module StateControl:
+
+constant SpeedMin = 30.f	: float;
+constant SpeedMax = 150.f	: float;
+constant PedalsMin = 3.f	: float;
+
+input OnSC, OffSC, ResumeSC;
+input AccelSC 			: float;
+input BrakeSC 			: float;
+input SpeedSC 			: float;
+
+output StateSC		: integer;
+
+var State := 1 : integer in
+	[loop
+		emit StateSC(State);
+		pause;
+		trap SC in
+			present OffSC then
+				State := 1;
+				exit SC;
+			end present;
+	
+			%OFF LOGIC
+			if State = 1 then
+				present OnSC then
+					State := 2;
+					exit SC;
+				end present;
+			end if;
+	
+			%ON LOGIC
+			if State = 2 then
+				if ?BrakeSC > PedalsMin then
+					State := 3;
+					exit SC;
+				elsif ?AccelSC > PedalsMin or ?SpeedSC > SpeedMax or ?SpeedSC < SpeedMin then
+					State := 4;
+					exit SC;
+				end if;
+			end if;
+	
+			%STBY LOGIC
+			if State = 3 then 
+				if ?BrakeSC > PedalsMin then
+					exit SC;
+				end if;
+	
+				present ResumeSC then 
+					if ?AccelSC > PedalsMin or ?SpeedSC > SpeedMax or ?SpeedSC < SpeedMin then 
+						State := 4;
+						exit SC;
+					elsif (?SpeedSC > SpeedMin and ?SpeedSC < SpeedMax) then
+						State := 2;
+						exit SC;
+					end if;
+				end present;
+			end if;
+	
+			%DISABLE LOGIC
+			if State = 4 then
+				if ?BrakeSC > PedalsMin then
+					State := 3;
+					exit SC;
+				elsif ?AccelSC < PedalsMin and (SpeedMin < ?SpeedSC and ?SpeedSC < SpeedMax) then
+					State := 2;
+					exit SC;
+				end if;
+			end if;
+	
+		end trap
+	end loop]
+end var
+end module
+
+%Module That Controls Speed Of Cruise Control
+module CruiseSpeedControl:
+constant SpeedMin = 30.f	: float;
+constant SpeedMax = 150.f	: float;
+constant SpeedInc = 2.5f	: float;
+
+input QuickDecelCSC, QuickAccelCSC, SetCSC;
+input SpeedCSC			: float;
+input StateCSC			: integer;
+
+output CruiseSpeedCSC 		: float;
+
+var Speed := 0.f : float in
+	[loop
+		emit CruiseSpeedCSC(Speed);
+		pause;
+		trap CSC in
+			if ?StateCSC = 1 then
+				%Speed := 0.f;
+				exit CSC;
+			elsif ?StateCSC = 2 and pre(?StateCSC) = 1 then
+				Speed := ?SpeedCSC;
+				exit CSC;
+			else
+				present QuickDecelCSC then
+					if (Speed - SpeedInc) >= SpeedMin then
+						Speed := Speed - SpeedInc;
+						exit CSC;
+					end if;
+				end present;
+
+				present QuickAccelCSC then
+					if (Speed + SpeedInc) <= SpeedMax then
+						Speed := Speed + SpeedInc;
+						exit CSC;
+					end if;
+				end present;
+
+				present SetCSC then
+					if ?SpeedCSC <= SpeedMax and ?SpeedCSC >= SpeedMin then
+						Speed := ?SpeedCSC;
+						exit CSC;
+					elsif ?SpeedCSC > SpeedMax then
+						Speed := SpeedMax;
+						exit CSC;
+					else
+						Speed := SpeedMin;
+						exit CSC;
+					end if;
+				end present;
+				exit CSC;
+			end if;
+		end trap
+	end loop]
+end var
+end module
+
+%Module That Controls Driving
+module DrivingControl:
+function regulateThrottle(integer, float, float): float;
+
+%Declare Input Variables
+input AccelDC 			: float;
+input SpeedDC 			: float;
+input StateDC			: integer;
+
+%Declare Output Variables
+output CruiseSpeedDC		: float;
+output ThrottleCmdDC 		: float;
+
+[loop
+	trap DC in 
+		pause;
+
+		%if in ON State
+		if ?StateDC = 2 then
+			%if just entered ON state saturate
+			if pre(?StateDC) = 1 then
+				emit ThrottleCmdDC(regulateThrottle(1, ?CruiseSpeedDC, ?SpeedDC));
+				exit DC;
+			%else dont saturate
+			else
+				emit ThrottleCmdDC(regulateThrottle(0, ?CruiseSpeedDC, ?SpeedDC));
+				exit DC;
+			end if;
+	
+		%if any other State
+		else	
+			%Accel directly given as output 
+			emit ThrottleCmdDC(?AccelDC);
+			exit DC;
+		end if;
+	end trap
+end loop]
+end module
+
+
+
+
+
